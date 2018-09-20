@@ -1,0 +1,587 @@
+function [allRewards, allChoices, glm_rwd, choiceSlope, rwdSlope] = behAnalysis_opMatchingDecoupled(filename, saveFigFlag, session)
+
+if nargin < 3
+    session = 0
+end
+
+if nargin < 2
+    session = 0
+    saveFigFlag = 1
+end
+
+[root, sep] = currComputer();
+
+[animalName, date] = strtok(filename, 'd'); 
+animalName = animalName(2:end);
+date = date(1:9);
+sessionFolder = ['m' animalName date];
+
+if session == 0
+    sessionDataPath = [root animalName sep sessionFolder sep 'sorted' sep 'session' sep filename '_sessionData_behav.mat'];
+    behFileName = filename;
+else
+    sessionDataPath = [root animalName sep sessionFolder sep 'sorted' sep 'session ' session sep filename session '_sessionData_behav.mat'];
+    behFileName = [filename session];
+end
+    
+if exist(sessionDataPath,'file')
+    load(sessionDataPath)
+else
+    [behSessionData, blockSwitch, blockSwitchL, blockSwitchR] = generateSessionData_operantMatchingDecoupled(filename, session);
+end
+
+%% Break session down into CS+ trials where animal responded
+
+responseInds = find(~isnan([behSessionData.rewardTime])); % find CS+ trials with a response in the lick window
+omitInds = isnan([behSessionData.rewardTime]); 
+
+tempBlockSwitch = blockSwitch;
+for i = 2:length(blockSwitch)
+    subVal = sum(omitInds(tempBlockSwitch(i-1):tempBlockSwitch(i)));
+    blockSwitch(i:end) = blockSwitch(i:end) - subVal;
+end
+
+allReward_R = [behSessionData(responseInds).rewardR]; 
+allReward_L = [behSessionData(responseInds).rewardL]; 
+rewProb_R = [behSessionData(responseInds).rewardProbR]; 
+rewProb_L = [behSessionData(responseInds).rewardProbL]; 
+allChoices = NaN(1,length(behSessionData(responseInds)));
+allChoices(~isnan(allReward_R)) = 1;
+allChoices(~isnan(allReward_L)) = -1;
+
+allReward_R(isnan(allReward_R)) = 0;
+allReward_L(isnan(allReward_L)) = 0;
+allChoice_R = double(allChoices == 1);
+allChoice_L = double(allChoices == -1);
+
+allRewards = zeros(1,length(allChoices));
+allRewards(logical(allReward_R)) = 1;
+allRewards(logical(allReward_L)) = -1;
+
+allITIs = [behSessionData(responseInds).trialEnd] - [behSessionData(responseInds).CSon];
+allProbsL = [behSessionData(responseInds).rewardProbL];
+allProbsR = [behSessionData(responseInds).rewardProbR];
+
+%% 
+figure
+suptitle(behFileName)
+
+%%
+subplot(6,8,[17:20 25:28]); hold on
+normKern = normpdf(-15:15,0,4);
+normKern = normKern / sum(normKern);
+xVals = (1:(length(normKern) + length(allChoices) - 1)) - round(length(normKern)/2);
+plot(xVals, conv(allChoices,normKern)/max(conv(allChoices,normKern)),'k','linewidth',2);
+plot(xVals, conv(allRewards,normKern)/max(conv(allRewards,normKern)),'--','Color',[100 100 100]./255,'linewidth',2)
+xlabel('Trials')
+ylabel('<-- Left       Right -->')
+legend('Choices','Rewards')
+xlim([1 length(allChoice_R)])
+ylim([-1 1])
+
+
+for i = 1:length(blockSwitch)
+    bs_loc = blockSwitch(i);
+    plot([bs_loc bs_loc],[-1 1],'--','linewidth',1,'Color',[30 144 255]./255)
+    if rem(i,2) == 0
+        labelOffset = 1.12;
+    else
+        labelOffset = 1.04;
+    end
+    a = num2str(allProbsL(blockSwitch(i)+1));
+    b = '/';
+    c = num2str(allProbsR(blockSwitch(i)+1));
+    label = strcat(a,b,c);
+    text(bs_loc,labelOffset,label);
+    set(text,'FontSize',3);
+end
+text(0,1.12,'L/R');
+
+%%
+rMag = 1;
+nrMag = rMag/2;
+
+% trial plot
+subplot(6,8,[1:8]); hold on
+smoothRew = conv(allRewards,normKern)/max(conv(allRewards,normKern));
+kernShift = (length(normKern) - 1)/2;
+smoothRew = smoothRew(kernShift:(length(smoothRew)-kernShift));
+smoothRewGaps = [];
+xValz = [1:length(behSessionData)];
+i=1;
+j=1;
+% for i = 1:length(sessionData);
+%     if responseInds(j) == i
+%         smoothRewGaps(i) = smoothRew(j);
+%         i=i+1;
+%         j=j+1;
+%     else
+%         smoothRewGaps(i) = NaN;
+%         i=i+1;
+%     end
+% end
+% plot(xValz, smoothRewGaps,'--','Color','k','linewidth',2)
+% xlabel('Trials')
+% xlim([1 length(sessionData)])
+% ylim([-1 1])
+for i = 1:length(behSessionData)
+    if strcmp(behSessionData(i).trialType,'CSplus')
+        if ~isnan(behSessionData(i).rewardR)
+            if behSessionData(i).rewardR == 1 % R side rewarded
+                plot([i i],[0 rMag],'k')
+            else
+                plot([i i],[0 nrMag],'k') % R side not rewarded
+            end
+        elseif ~isnan(behSessionData(i).rewardL)
+            if behSessionData(i).rewardL == 1 % L side rewarded
+                plot([i i],[-1*rMag 0],'k')
+            else
+                plot([i i],[-1*nrMag 0],'k')
+            end
+            
+        else % CSplus trial but no rewardL or rewardR
+            plot([i i],[-rMag rMag],'r')
+        end
+    else % CS minus trial
+        plot([i],0,'ko','markersize',4,'linewidth',2)
+    end
+    if any(i == blockSwitch)
+        plot([i i],[-1*rMag rMag],'--','linewidth',1,'Color',[30 144 255]./255)
+    end
+end
+
+% time plot
+subplot(6,8,[9:16]); hold on
+xlabel('Time (min)')
+for i = 1:length(behSessionData)
+    currTime = (behSessionData(i).CSon - behSessionData(1).CSon)/1000/60; %convert to min
+    if strcmp(behSessionData(i).trialType,'CSplus')
+        if ~isnan(behSessionData(i).rewardR)
+            if behSessionData(i).rewardR == 1 % R side rewarded
+                plot([currTime currTime],[0 rMag],'k')
+            else
+                plot([currTime currTime],[0 nrMag],'k') % R side not rewarded
+            end
+        elseif ~isnan(behSessionData(i).rewardL)
+            if behSessionData(i).rewardL == 1 % L side rewarded
+                plot([currTime currTime],[-1*rMag 0],'k')
+            else
+                plot([currTime currTime],[-1*nrMag 0],'k')
+            end
+            
+        else % CSplus trial but no rewardL or rewardR
+            plot([currTime currTime],[-rMag rMag],'r')
+        end
+    else % CS minus trial
+        plot([currTime],0,'ko','markersize',4,'linewidth',2)
+    end
+    if any(i == blockSwitch)
+        plot([currTime currTime],[-1*rMag rMag],'--','linewidth',1,'Color',[30 144 255]./255)
+    end
+end
+xlim([0 currTime]);
+
+%% linear regression model (has to be here for generating rwd hist before switch histogram)
+
+tMax = 10;
+rwdMatx = [];
+for i = 1:tMax
+    rwdMatx(i,:) = [NaN(1,i) allRewards(1:end-i)];
+end
+
+choiceMatx = [];
+for i = 1:tMax
+    choiceMatx(i,:) = [NaN(1,i) allChoices(1:end-i)];
+end
+
+glm_rwd = fitglm([rwdMatx]', allChoice_R,'distribution','binomial','link','logit'); rsq{1} = num2str(round(glm_rwd.Rsquared.Adjusted*100)/100);
+glm_choice = fitglm([choiceMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq{3} = num2str(round(glm_choice.Rsquared.Adjusted*100)/100);
+glm_rwdANDchoice = fitglm([rwdMatx; choiceMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq{2} = num2str(round(glm_rwdANDchoice.Rsquared.Adjusted*100)/100);
+
+
+%% Consec no rewards before switch and rwd hist before switch
+changeChoice = [false abs(diff(allChoices)) > 0];
+changeHistogram = [];
+changeHistogram_LtoR = [];
+changeHistogram_RtoL = [];
+changeRwdHistogram_LtoR = [];
+changeRwdHistogram_RtoL = [];
+changeRwdHistogram = [];
+
+% % exponential decay for convolution 
+% x = [1:10];
+% expConv = exp(-x/5); 
+
+% OR exponential decay fit to beta values from linear regression
+expFit = singleExpFit(glm_rwd.Coefficients.Estimate(2:end));
+expConv = expFit.a*exp(-(1/expFit.b)*(1:10));
+expConv = expConv./sum(expConv);
+
+allRewardsBinary(find(allRewards == -1)) = 1;               %make all rewards have the same value
+rwdHx = conv(allRewardsBinary,expConv,'full');              %convolve with exponential decay to give weighted moving average
+rwdHx = rwdHx(1:end-(length(expConv)-1));                   %to account for convolution padding
+rwdHx_L = conv(allReward_L,expConv,'full');                 %same convolution but only with L rewards over all trials
+rwdHx_L = rwdHx_L(1:end-(length(expConv)-1));  
+rwdHx_R = conv(allReward_R,expConv,'full');
+rwdHx_R = rwdHx_R(1:end-(length(expConv)-1));
+
+
+for i = find(changeChoice == 1)
+    if allChoices(i) == 1 % if a right lick
+        temp = 0;
+        goBack = 1;
+        while (i - goBack > 0) && allChoices(i-goBack) == -1 && allRewards(i-goBack) == 0 % if previous trial was a L lick AND resulted in no reward
+            temp = temp + 1;
+            goBack = goBack + 1;
+        end
+        changeHistogram = [changeHistogram temp];
+        changeHistogram_LtoR = [changeHistogram_LtoR temp];
+        changeRwdHistogram_LtoR = [changeRwdHistogram_LtoR rwdHx_L(i-1)];
+        changeRwdHistogram = [changeRwdHistogram rwdHx(i-1)];
+    elseif allChoices(i) == -1 %if a left lick
+        temp = 0;
+        goBack = 1;
+        while (i - goBack > 0) && allChoices(i-goBack) == 1 && allRewards(i-goBack) == 0 % if previous trial was a R lick AND resulted in no reward
+            temp = temp + 1;
+            goBack = goBack + 1;
+        end
+        changeHistogram = [changeHistogram temp];
+        changeHistogram_RtoL = [changeHistogram_RtoL temp];
+        changeRwdHistogram_RtoL = [changeRwdHistogram_RtoL rwdHx_R(i-1)];
+        changeRwdHistogram = [changeRwdHistogram rwdHx(i-1)];
+    end
+end
+
+subplot(6,8,[31 32]); hold on;
+histogram(changeHistogram_LtoR,0:max(changeHistogram),'Normalization','probability')
+histogram(changeHistogram_RtoL,0:max(changeHistogram),'Normalization','probability')
+legend('L -> R','R -> L')
+xlabel('Consec No Rewards Before Switch')
+
+LtoRx = linspace(-0.2, 0.2, length(changeRwdHistogram_LtoR));       %gives jitter to plot points to separate within group
+RtoLx = linspace(1.8, 2.2, length(changeRwdHistogram_RtoL));
+bothx = linspace(0.8, 1.2, length(changeRwdHistogram));
+
+subplot(6,8,[29 30]); hold on;
+scatter(LtoRx, changeRwdHistogram_LtoR)
+scatter(RtoLx, changeRwdHistogram_RtoL)
+scatter(bothx, changeRwdHistogram)
+ylabel('Reward history before switch')
+xlim([-0.5 2.5]);
+set(gca, 'XTickLabelMode', 'Manual')
+set(gca, 'XTick', [])
+% set(gca, 'XTickLabel', ['LtR' 'both' 'RtoL'])
+xticks([0 1 2])
+xticklabels({sprintf('L Hist\nL to R','both','R to L'})
+
+%%
+subplot(6,8,[23 24]);
+stayDuration = diff(find(diff(allChoices) ~= 0));
+histogram(stayDuration,1:max(stayDuration),'Normalization','probability')
+xlabel('Stay Duration')
+
+%%
+cumsum_allRchoice = cumsum(allChoices == 1);
+cumsum_allLchoice = cumsum(allChoices == -1);
+cumsum_allRreward = cumsum(allRewards == 1);
+cumsum_allLreward = cumsum(allRewards == -1);
+cumsum_blockSwitch = cumsum_allLchoice(blockSwitch);
+if cumsum_blockSwitch(1) == 0
+    cumsum_blockSwitch(1) = 1;
+end
+
+halfKern = normKern(round(length(normKern)/2):end);
+choiceSlope = atand(diff(conv(cumsum_allRchoice,halfKern))./diff(conv(cumsum_allLchoice,halfKern)));
+rwdSlope = atand(diff(conv(cumsum_allRreward,halfKern))./diff(conv(cumsum_allLreward,halfKern)));
+
+subplot(6,8,[37 38 45 46]); hold on
+plot(cumsum_allLchoice, cumsum_allRchoice,'linewidth',2,'Color',[30,144,255]/255);
+
+avgRwdSlope = [];
+tempMax = 0;
+for i = 1:length(cumsum_blockSwitch)
+    if i ~= length(cumsum_blockSwitch)
+        avgRwdSlope(i) = tand(nanmean(rwdSlope(blockSwitch(i):blockSwitch(i+1))));
+        xval = [cumsum_blockSwitch(i) cumsum_blockSwitch(i+1)];
+        yval = [cumsum_blockSwitch(i) cumsum_blockSwitch(i+1)]*avgRwdSlope(i) - cumsum_blockSwitch(i)*avgRwdSlope(i) + cumsum_allRchoice(blockSwitch(i));
+        tempMax = yval(2);
+        plot(xval, yval, 'k','linewidth',2);
+    else
+        avgRwdSlope(i) = tand(mean(rwdSlope(blockSwitch(i):end)));
+        xval = [cumsum_blockSwitch(i) cumsum_allLchoice(end)];
+        yval = [cumsum_blockSwitch(i) cumsum_allLchoice(end)]*avgRwdSlope(i) - cumsum_blockSwitch(i)*avgRwdSlope(i) + cumsum_allRchoice(blockSwitch(i));
+        tempMax = yval(2);
+        plot(xval, yval, 'k','linewidth',2);
+    end
+end
+limMax = max([max(cumsum_allLchoice) max(cumsum_allRchoice)]);
+xlim([0 limMax])
+ylim([0 limMax])
+legend('Choice','Income','location','best')
+xlabel('Cumulative Left Choices'); ylabel('Cumulative Right Choices')
+
+%%
+subplot(6,8,[33:36 41:44]); hold on;
+
+plot(choiceSlope,'linewidth',1.5,'Color',[30,144,255]/255)
+plot(rwdSlope,'k','linewidth',1.5)
+for i = 1:length(avgRwdSlope)
+    if i ~= length(avgRwdSlope)
+        plot([blockSwitch(i) blockSwitch(i+1)], [mean(choiceSlope(blockSwitch(i):blockSwitch(i+1))) mean(choiceSlope(blockSwitch(i):blockSwitch(i+1)))],'linewidth',4,'Color',[30,144,255]/255);
+        plot([blockSwitch(i) blockSwitch(i+1)], [mean(rwdSlope(blockSwitch(i):blockSwitch(i+1))) mean(rwdSlope(blockSwitch(i):blockSwitch(i+1)))],'k','linewidth',4);
+    else
+        plot([blockSwitch(i) length(choiceSlope)], [mean(choiceSlope(blockSwitch(i):length(choiceSlope))) mean(choiceSlope(blockSwitch(i):length(choiceSlope)))],'linewidth',4,'Color',[30,144,255]/255)
+        plot([blockSwitch(i) length(rwdSlope)], [mean(rwdSlope(blockSwitch(i):length(choiceSlope))) mean(rwdSlope(blockSwitch(i):length(choiceSlope)))],'k','linewidth',4);
+    end
+end
+
+xlim([1 length(allChoices)])
+ylim([0 90])
+legend('Choice','Rewards')
+xlabel('Choice number')
+ylabel('Slope (degrees)')
+
+
+%% determine and plot lick latency distributions for each spout
+lickLat = [];
+lickLat_L = [];
+lickLat_R = [];
+for i = 1:length(behSessionData)
+    if ~isempty(behSessionData(i).rewardTime)
+        lickLat = [lickLat behSessionData(i).rewardTime - behSessionData(i).CSon];
+        if ~isnan(behSessionData(i).rewardL)
+            lickLat_L = [lickLat_L behSessionData(i).rewardTime - behSessionData(i).CSon];
+        elseif ~isnan(behSessionData(i).rewardR)
+            lickLat_R = [lickLat_R behSessionData(i).rewardTime - behSessionData(i).CSon];
+        end
+    end
+end
+
+subplot(6,8,[21 22]); hold on
+histogram(lickLat_L,0:50:1500,'Normalization','probability'); histogram(lickLat_R,0:50:1500,'Normalization','probability')
+legend('Left Licks','Right Licks')
+xlabel('Lick Latency (ms)')
+
+%% block switch choice analysis
+% make number of trials the max block length for the session and
+% fill with NaNs if shorter, then nanmean
+blockSwitch = blockSwitch + 1;
+blockSwitch(1) = 1;
+lastTrial = length(allChoices);
+blockSwitchAndEnd = horzcat(blockSwitch, lastTrial);
+totalSwitches = length(blockSwitchAndEnd);
+
+if totalSwitches > 2
+    choiceBlocks = [];
+    choiceBlocks_L = [];
+    choiceBlocks_R = [];
+    rewardBlocks = [];
+    rewardBlocks_L = [];
+    rewardBlocks_R = [];
+    blockMin = 15;
+
+    j = 1;
+    k = 1;
+    for i = 2:(totalSwitches - 2)
+        if blockSwitchAndEnd(i+1) >= (blockSwitchAndEnd(i) + blockMin)
+            if rewProb_L(blockSwitchAndEnd(i)) > rewProb_R(blockSwitchAndEnd(i))
+                choiceBlocks(i-1, :) = allChoice_L(blockSwitch(i):(blockSwitch(i)+blockMin));
+                rewardBlocks(i-1, :) = allReward_L(blockSwitch(i):(blockSwitch(i)+blockMin));
+                choiceBlocks_L(j, :) = allChoice_L(blockSwitch(i):(blockSwitch(i)+blockMin));
+                rewardBlocks_L(j, :) = allReward_L(blockSwitch(i):(blockSwitch(i)+blockMin));
+                j = j + 1;
+            else
+                choiceBlocks(i-1, :) = allChoice_R(blockSwitch(i):(blockSwitch(i)+blockMin));
+                rewardBlocks(i-1, :) = allReward_R(blockSwitch(i):(blockSwitch(i)+blockMin));
+                choiceBlocks_R(k, :) = allChoice_R(blockSwitch(i):(blockSwitch(i)+blockMin));
+                rewardBlocks_R(k, :) = allReward_R(blockSwitch(i):(blockSwitch(i)+blockMin));
+                k = k + 1;
+            end
+        end
+    end
+
+    if (blockSwitchAndEnd(totalSwitches) - blockSwitchAndEnd(totalSwitches - 1) >= blockMin)
+        if rewProb_L(blockSwitchAndEnd(totalSwitches - 1)) > rewProb_R(blockSwitchAndEnd(totalSwitches - 1))
+            choiceBlocks(totalSwitches-2, :) = allChoice_L(blockSwitch(end):(blockSwitch(end) + blockMin));
+            rewardBlocks(totalSwitches-2, :) = allReward_L(blockSwitch(end):(blockSwitch(end) + blockMin));
+            choiceBlocks_L(k, :) = allChoice_L(blockSwitch(end):(blockSwitch(end) + blockMin));
+            rewardBlocks_L(k, :) = allReward_L(blockSwitch(i):(blockSwitch(i)+blockMin));
+        else
+            choiceBlocks(totalSwitches-2, :) = allChoice_R(blockSwitch(end):(blockSwitch(end) + blockMin));
+            rewardBlocks(totalSwitches-2, :) = allReward_R(blockSwitch(end):(blockSwitch(end) + blockMin));
+            choiceBlocks_R(k, :) = allChoice_R(blockSwitch(end):(blockSwitch(end) + blockMin));
+            rewardBlocks_R(k, :) = allReward_R(blockSwitch(i):(blockSwitch(i)+blockMin));
+        end
+    end
+
+    choiceBlocksAve_R = mean(choiceBlocks_R, 1);
+    choiceBlocksAve_L = mean(choiceBlocks_L, 1);
+
+    x = (1:length(choiceBlocksAve_R));
+
+    subplot(6,8,[39 40 47 48]); hold on
+    if size(choiceBlocks_R, 1) > 1
+        sem_R = std(choiceBlocks_R, 1) / sqrt(length(choiceBlocks_R));
+        errorbar(x, choiceBlocksAve_R, sem_R, 'linewidth', 1);
+    else
+        plot(x, choiceBlocksAve_R, 'linewidth', 1);
+    end
+    if size(choiceBlocks_L, 1) > 1
+        sem_L = std(choiceBlocks_L, 1) / sqrt(length(choiceBlocks_L));
+        errorbar(x, choiceBlocksAve_L, sem_L, 'linewidth', 1);
+    else
+        plot(x, choiceBlocksAve_L, 'linewidth', 1);
+    end
+    xlabel('Trials from Block Switch')
+    ylabel('Average Choice Fraction')
+    xlim([0 (blockMin + 2)])
+
+end
+
+%%
+set(gcf, 'Position', get(0,'Screensize'))
+
+savePath = [root animalName sep sessionFolder sep  'figures' sep];
+if isempty(dir(savePath))
+    mkdir(savePath)
+end
+
+if saveFigFlag == 1
+    saveFigurePDF(gcf,[savePath sep filename '_behavior'])
+end
+
+
+%% 
+figure   %make new ITI analysis figure
+suptitle(filename)
+
+%% plotting linear regression model
+
+subplot(2,3,1); hold on
+relevInds = 2:tMax+1;
+coefVals = glm_rwd.Coefficients.Estimate(relevInds);
+CIbands = coefCI(glm_rwd);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'k','linewidth',2)
+
+relevInds = 2:tMax+1;
+coefVals = glm_rwdANDchoice.Coefficients.Estimate(relevInds);
+CIbands = coefCI(glm_rwdANDchoice);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color',[189,183,107]/255,'linewidth',2)
+xlabel('Reward n Trials Back')
+ylabel('\beta Coefficient')
+%legend(['Rwd History Only. R^2: ' rsq{1}],['Rwd and Choice History. R^2: ' rsq{2}],'location','best')
+legend(sprintf('%s\n%s',['R-R^s:' rsq{1}], ['Int: ' num2str(round(100*glm_rwd.Coefficients.Estimate(1))/100)]), ...
+       sprintf('%s\n%s\n%s',['R&C-R^2' rsq{2}], ['Int: ' num2str(round(100*glm_rwdANDchoice.Coefficients.Estimate(1))/100)]), ...
+       'location','northeast')
+xlim([0.5 tMax+0.5])
+
+
+subplot(2,3,2); hold on
+relevInds = 2:tMax+1;
+coefVals = glm_choice.Coefficients.Estimate(relevInds);
+CIbands = coefCI(glm_choice);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'Color',[34,139,34]/255,'linewidth',2)
+
+relevInds = tMax+2:length(glm_rwdANDchoice.Coefficients.Estimate);
+coefVals = glm_rwdANDchoice.Coefficients.Estimate(relevInds);
+CIbands = coefCI(glm_rwdANDchoice);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color',[189,183,107]/255,'linewidth',2)
+xlabel('Choice n Trials Back')
+ylabel('\beta Coefficient')
+%legend(['Choice History Only. R^2: ' rsq{3}],['Rwd and Choice History. R^2: ' rsq{2}],'location','best');
+legend(['C-R^2:' rsq{3}],['R&C-R^2:' rsq{2}],'location','northeast');
+xlim([0.5 tMax+0.5])
+
+itiMatx = [];
+for i = 1:tMax
+    itiMatx(i,:) = [NaN(1,i) allITIs(1:end-i)];
+end
+
+itiXrwd = itiMatx.*rwdMatx;
+itiXchoice = itiMatx.*choiceMatx;
+itiXchoiceXrwd = itiXrwd.*choiceMatx;
+
+subplot(2,3,3); hold on
+
+lm = fitlm([itiMatx]', allChoices,'linear'); rsq{1} = num2str(round(lm.Rsquared.Adjusted*100)/100);
+relevInds = 2:tMax+1;
+coefVals = lm.Coefficients.Estimate(relevInds);
+CIbands = coefCI(lm);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'k','linewidth',2)
+
+lm = fitlm([rwdMatx; itiMatx]', allChoices, 'linear'); rsq{2} = num2str(round(lm.Rsquared.Adjusted*100)/100);
+relevInds = 2:tMax+1;
+coefVals = lm.Coefficients.Estimate(relevInds);
+CIbands = coefCI(lm);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color',[189,183,107]/255,'linewidth',2)
+xlabel('Reward n Trials Back')
+ylabel('\beta Coefficient')
+legend(['ITI History Only. R^2: ' rsq{1}],['ITI x Reward History. R^2: ' rsq{2}],'location','best')
+xlim([0.5 tMax+0.5])
+
+
+subplot(2,3,4); hold on
+
+lm = fitlm([itiXrwd]', allChoices,'linear'); rsq{1} = num2str(round(lm.Rsquared.Adjusted*100)/100);
+relevInds = 2:tMax+1;
+coefVals = lm.Coefficients.Estimate(relevInds);
+CIbands = coefCI(lm);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'k','linewidth',2)
+xlabel('Reward n Trials Back')
+ylabel('\beta Coefficient')
+legend(['ITIxRwd History. R^2: ' rsq{1}],'location','best')
+xlim([0.5 tMax+0.5])
+
+subplot(2,3,5); hold on
+
+lm = fitlm([itiXchoice]', allChoices,'linear'); rsq{1} = num2str(round(lm.Rsquared.Adjusted*100)/100);
+relevInds = 2:tMax+1;
+coefVals = lm.Coefficients.Estimate(relevInds);
+CIbands = coefCI(lm);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'k','linewidth',2)
+xlabel('Reward n Trials Back')
+ylabel('\beta Coefficient')
+legend(['ITIxChoice History. R^2: ' rsq{1}],'location','best')
+xlim([0.5 tMax+0.5])
+
+subplot(2,3,6); hold on
+
+lm = fitlm([itiXchoiceXrwd]', allChoices,'linear'); rsq{1} = num2str(round(lm.Rsquared.Adjusted*100)/100);
+relevInds = 2:tMax+1;
+coefVals = lm.Coefficients.Estimate(relevInds);
+CIbands = coefCI(lm);
+errorL = abs(coefVals - CIbands(relevInds,1));
+errorU = abs(coefVals - CIbands(relevInds,2));
+errorbar(1:tMax,coefVals,errorL,errorU,'k','linewidth',2)
+xlabel('Reward n Trials Back')
+ylabel('\beta Coefficient')
+legend(['ITIxRwdxChoice History. R^2: ' rsq{1}],'location','best')
+xlim([0.5 tMax+0.5])
+
+%%
+set(gcf, 'Position', get(0,'Screensize'))
+
+savePath = [root animalName sep sessionFolder sep  'figures' sep];
+if isempty(dir(savePath))
+    mkdir(savePath)
+end
+
+if saveFigFlag == 1
+    saveFigurePDF(gcf,[savePath sep filename '_behaviorRegression'])
+end
