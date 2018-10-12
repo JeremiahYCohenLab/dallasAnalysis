@@ -322,50 +322,26 @@ for i = 1:tMax
     noRwdMatx(i,:) = [NaN(1,i) allChoices(1:end-i)];
 end
 
-glm_rwd = fitglm([rwdMatx]', allChoice_R,'distribution','binomial','link','logit'); rsq{1} = num2str(round(glm_rwd.Rsquared.Adjusted*100)/100);
-glm_noRwd = fitglm([noRwdMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq{3} = num2str(round(glm_noRwd.Rsquared.Adjusted*100)/100);
-glm_rwdANDnoRwd = fitglm([rwdMatx; noRwdMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq{2} = num2str(round(glm_rwdANDnoRwd.Rsquared.Adjusted*100)/100);
+glm_rwdANDnoRwd = fitglm([rwdMatx; noRwdMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq = num2str(round(glm_rwdANDnoRwd.Rsquared.Adjusted*100)/100);
 
-subplot(6,8,[39 40]); hold on
-relevInds = 2:tMax+1;
-coefVals = glm_rwd.Coefficients.Estimate(relevInds);
-CIbands = coefCI(glm_rwd);
-errorL = abs(coefVals - CIbands(relevInds,1));
-errorU = abs(coefVals - CIbands(relevInds,2));
-errorbar(1:tMax,coefVals,errorL,errorU,'c','linewidth',2)
-
+subplot(6,8,[39 40 47 48]); hold on
 relevInds = 2:tMax+1;
 coefVals = glm_rwdANDnoRwd.Coefficients.Estimate(relevInds);
 CIbands = coefCI(glm_rwdANDnoRwd);
 errorL = abs(coefVals - CIbands(relevInds,1));
 errorU = abs(coefVals - CIbands(relevInds,2));
-errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color',[0.5 1 1],'linewidth',2)
-xlabel('Reward n Trials Back')
-ylabel('\beta Coefficient')
-legend(sprintf('%s\n%s',['R-R^s:' rsq{1}], ['Int: ' num2str(round(100*glm_rwd.Coefficients.Estimate(1))/100)]), ...
-       sprintf('%s\n%s\n%s',['R&NR-R^2' rsq{2}], ['Int: ' num2str(round(100*glm_rwdANDnoRwd.Coefficients.Estimate(1))/100)]), ...
-       'location','northeast')
-xlim([0.5 tMax+0.5])
-plot([0 tMax],[0 0],'k--')
-
-
-subplot(6,8,[47 48]); hold on
-relevInds = 2:tMax+1;
-coefVals = glm_noRwd.Coefficients.Estimate(relevInds);
-CIbands = coefCI(glm_noRwd);
-errorL = abs(coefVals - CIbands(relevInds,1));
-errorU = abs(coefVals - CIbands(relevInds,2));
-errorbar(1:tMax,coefVals,errorL,errorU,'m','linewidth',2)
+errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color','c','linewidth',2)
 
 relevInds = tMax+2:length(glm_rwdANDnoRwd.Coefficients.Estimate);
 coefVals = glm_rwdANDnoRwd.Coefficients.Estimate(relevInds);
 CIbands = coefCI(glm_rwdANDnoRwd);
 errorL = abs(coefVals - CIbands(relevInds,1));
 errorU = abs(coefVals - CIbands(relevInds,2));
-errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color',[1 0.5 1],'linewidth',2)
-xlabel('No reward n Trials Back')
+errorbar((1:tMax)+0.2,coefVals,errorL,errorU,'Color','m','linewidth',2)
+xlabel('Outcome n Trials Back')
 ylabel('\beta Coefficient')
-legend(['NR-R^2:' rsq{3}],['R&NR-R^2:' rsq{2}],'location','northeast');
+legend('rwd', [sprintf('\n%s\n%s%s',['no rwd'], ['R^2' rsq ' | '], ['Int: ' num2str(round(100*glm_rwdANDnoRwd.Coefficients.Estimate(1))/100)])], ...
+       'location','northeast')
 xlim([0.5 tMax+0.5])
 plot([0 tMax],[0 0],'k--')
 
