@@ -315,11 +315,11 @@ for i = 1:tMax
     rwdMatx(i,:) = [NaN(1,i) allRewards(1:end-i)];
 end
 
-choiceMatx = [];
+allNoRewards = allChoices;
+allNoRewards(allRewards~=0) = 0;
+noRwdMatx = [];
 for i = 1:tMax
-    noRewards = allChoices;
-    noRewards(allRewards==0) = 0;
-    noRwdMatx(i,:) = [NaN(1,i) allChoices(1:end-i)];
+    noRwdMatx(i,:) = [NaN(1,i) allNoRewards(1:end-i)];
 end
 
 glm_rwdANDnoRwd = fitglm([rwdMatx; noRwdMatx]', allChoice_R, 'distribution','binomial','link','logit'); rsq = num2str(round(glm_rwdANDnoRwd.Rsquared.Adjusted*100)/100);
@@ -347,7 +347,7 @@ plot([0 tMax],[0 0],'k--')
 
 
 %% exponential decay fit to beta values from linear regression
-expFit = singleExpFit(glm_rwd.Coefficients.Estimate(2:end));
+expFit = singleExpFit(glm_rwdANDnoRwd.Coefficients.Estimate(2:end));
 expConv = expFit.a*exp(-(1/expFit.b)*(1:10));
 expConv = expConv./sum(expConv);
                       
@@ -599,7 +599,7 @@ ylabel('Peak Lick Rate Z-Score')
 xlabel('Rewarded Trials')
 
 %plot scatters for reward history smoothed with kernel derived from beta coefficients (choices) v lick behavior  
-expFit = singleExpFit(glm_rwd.Coefficients.Estimate(2:end));
+expFit = singleExpFit(glm_rwdANDnoRwd.Coefficients.Estimate(2:end));
 expConv = expFit.a*exp(-(1/expFit.b)*(1:10));
 expConv = expConv./sum(expConv);
 rwdHx = conv(allRewardsBin,expConv);
