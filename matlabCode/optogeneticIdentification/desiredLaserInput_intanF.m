@@ -1,4 +1,4 @@
-function laserInput = desiredLaserInput_295acute(desiredOutput, laserSource, opticFiberTrans)
+function laserInput = desiredLaserInput_intanF(desiredOutput, laserSource, opticFiberTrans)
 % laserInput = desiredLaserInput(desiredOutput, opticFiberTrans)
 %   DESCRIPTION
 %       Uses a calibration range from 1 to 10 fit with output = a*exp(b*input)
@@ -15,13 +15,11 @@ end
 
 % calibrated on 20180820
 if laserSource == 473
-    p = [1.249 -7.344 (10.57 - desiredOutput/opticFiberTrans)];
-    r = roots(p);
-    laserInput = max(r);
-elseif laserSource == 532
-    p = [0.3323 11.64 (-26.09 - desiredOutput/opticFiberTrans)];
-    r = roots(p);
-    laserInput = max(r);
+    laserInput = ((desiredOutput*2/opticFiberTrans)/ 0.00387)^(1/4.278);
+% elseif laserSource == 532
+%     p = [0.3323 11.64 (-26.09 - desiredOutput/opticFiberTrans)];
+%     r = roots(p);
+%     laserInput = max(r);
 else
     error('laserSource must be either 473 or 532')
 end
