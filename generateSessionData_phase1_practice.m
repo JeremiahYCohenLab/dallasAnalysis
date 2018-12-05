@@ -66,15 +66,6 @@ for i = 1:length(sessionText)
                 temp3 = regexp(temp2{1}{2}, ':', 'split');
                 sessionData(currTrial).rewardProbR = str2double(temp3(1,1));
             end
-            if strfind(sessionText{currTrialInd},'CS PLUS')
-                sessionData(currTrial).trialType = 'CSplus';
-                temp = regexp(sessionText(currTrialInd), ': ', 'split');
-                sessionData(currTrial).CSon = str2double(temp{1}{2});
-            elseif strfind(sessionText{currTrialInd},'CS MINUS')
-                sessionData(currTrial).trialType = 'CSminus';
-                temp = regexp(sessionText(currTrialInd), ': ', 'split');
-                sessionData(currTrial).CSon = str2double(temp{1}{2});
-            end
             if regexp(sessionText{currTrialInd},'L: ') == 1
                 temp = regexp(sessionText(currTrialInd), ': ', 'split');
                 allL_licks = [allL_licks str2double(temp{1}{2})];
